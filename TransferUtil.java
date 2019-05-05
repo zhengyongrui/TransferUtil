@@ -38,8 +38,8 @@ public class TransferUtil {
      * @param <T> 返回的对象泛型
      * @return .
      */
-    public static <T> T copyBean(Object po, Class<?> voClass) {
-       return copyBean(po, voClass, true);
+    public static <T> T copyBean(Object po, Class<T> voClass) {
+        return copyBean(po, voClass, true);
     }
 
     /**
@@ -97,10 +97,8 @@ public class TransferUtil {
         if (poList == null) {
             return null;
         } else {
-            List<T> voList = new ArrayList();
-            Iterator var4 = poList.iterator();
-            while (var4.hasNext()) {
-                Object po = var4.next();
+            List<T> voList = new ArrayList<>();
+            for (Object po : poList) {
                 voList.add(copyBean(po, voClass, copySameName));
             }
             return voList;
@@ -129,12 +127,54 @@ public class TransferUtil {
                         voField.getAnnotation(TransferField.class).value().equals(poField.getName())
                 ).findFirst().ifPresent(voField -> {
                     // 同步数据
-                    Object fileValue = parser.parseExpression(poField.getName()).getValue(poEvaluationContext);
-                    parser.parseExpression(voField.getName()).setValue(voEvaluationContext, fileValue);
+                    Object fieldValue = parser.parseExpression(poField.getName()).getValue(poEvaluationContext);
+                    if (checkIsDateAndLongTransfer(voField, poField))
+                    {
+                        transferDateAndLongField(parser, poField, voField, voEvaluationContext, fieldValue);
+                    } else {
+                        parser.parseExpression(voField.getName()).setValue(voEvaluationContext, fieldValue);
+                    }
                 });
             });
         }
         return vo;
+    }
+
+    /**
+     * Date与Long俩个字段数据互相转换
+     * @param parser .
+     * @param poField po字段
+     * @param voField vo字段
+     * @param voEvaluationContext .
+     * @param fieldValue 字段值
+     */
+    private static void transferDateAndLongField(ExpressionParser parser, Field poField, Field voField, StandardEvaluationContext voEvaluationContext, Object fieldValue) {
+        if (poField.getType().equals(Date.class)) {
+            Date fieldValueDate = (Date) Optional.ofNullable(fieldValue).orElse(new Date());
+            parser.parseExpression(voField.getName()).setValue(voEvaluationContext, fieldValueDate.getTime());
+        } else {
+            Long fieldValueDate = (Long) Optional.ofNullable(fieldValue).orElse(0);
+            parser.parseExpression(voField.getName()).setValue(voEvaluationContext, new Date(fieldValueDate));
+        }
+    }
+
+    /**
+     * 判断是否2个字段类型不一样并且是Date与Long互相转换
+     * @param voField vo
+     * @param poField po
+     * @return 是否
+     */
+    private static boolean checkIsDateAndLongTransfer(Field voField, Field poField) {
+        boolean result = false;
+        if (!voField.getType().equals(poField.getType())) {
+            List<Class> checkTypes = Arrays.asList(Date.class, Long.class, long.class);
+            List<Class> fieldTypes = Arrays.asList(voField.getType(), poField.getType());
+            // 从Date Long long过滤字段的类型
+            List<Class> reduceTypes = checkTypes.stream().filter(aClass -> !fieldTypes.contains(aClass)).collect(Collectors.toList());
+            // 如果剩下的类型只剩下一个数值类型,证明他们一个是date一个是long,返回true
+            result = reduceTypes.size() == 1 && Arrays.asList(Long.class, long.class).contains(reduceTypes.get(0));
+        }
+        return result;
     }
 
 }
